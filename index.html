@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Machine Quill — a GPT trained from scratch, running in your browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #16140f;
+    --ink-soft: #2a2620;
+    --paper: #e9e2cc;
+    --paper-dim: #d8cfb4;
+    --gold: #a8823c;
+    --rose: #8a4a3d;
+    --line: rgba(233, 226, 204, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Cormorant Garamond', serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 5rem 1.5rem 6rem;
+  }
+
+  header.hero {
+    text-align: left;
+    margin-bottom: 3rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 2.5rem;
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-size: clamp(2.2rem, 5vw, 3.4rem);
+    font-weight: 600;
+    line-height: 1.05;
+    margin: 0 0 1rem;
+    font-style: italic;
+  }
+
+  .lede {
+    font-size: 1.2rem;
+    color: var(--paper-dim);
+    max-width: 56ch;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .lede code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    color: var(--gold);
+  }
+
+  /* --- the "page" the model writes on --- */
+
+  .manuscript {
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 2px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .manuscript::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        transparent, transparent 34px, rgba(0,0,0,0.045) 35px
+      );
+    pointer-events: none;
+  }
+
+  .manuscript-inner {
+    position: relative;
+    padding: 2.2rem 2.2rem 1.6rem;
+  }
+
+  .prompt-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+    margin-bottom: 1.4rem;
+  }
+
+  #prompt {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--ink-soft);
+    color: var(--ink);
+    padding: 0.6rem 0.2rem;
+    outline: none;
+  }
+  #prompt::placeholder { color: rgba(22,20,15,0.45); }
+  #prompt:focus { border-bottom-color: var(--rose); }
+
+  button#generate {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0 1.4rem;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+  }
+  button#generate:hover:not(:disabled) { background: var(--rose); }
+  button#generate:active:not(:disabled) { transform: translateY(1px); }
+  button#generate:disabled { opacity: 0.45; cursor: default; }
+
+  #output {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    line-height: 1.85;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 9em;
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    background: var(--rose);
+    vertical-align: text-bottom;
+    animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: rgba(22,20,15,0.55);
+    border-top: 1px solid rgba(22,20,15,0.12);
+    padding: 0.8rem 2.2rem;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* --- marginalia: the architecture stats --- */
+
+  .marginalia {
+    margin-top: 3.5rem;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .stat {
+    background: var(--ink);
+    padding: 1.1rem 1rem;
+  }
+
+  .stat .n {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    color: var(--gold);
+    display: block;
+  }
+
+  .stat .l {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+  }
+
+  footer {
+    margin-top: 3rem;
+    font-size: 1.02rem;
+    color: var(--paper-dim);
+    line-height: 1.6;
+    max-width: 58ch;
+  }
+
+  footer a { color: var(--gold); }
+
+  @media (max-width: 560px) {
+    .marginalia { grid-template-columns: repeat(2, 1fr); }
+    .manuscript-inner { padding: 1.5rem 1.3rem 1.2rem; }
+    .prompt-row { flex-direction: column; }
+    button#generate { padding: 0.7rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <p class="eyebrow">a transformer, built from first principles</p>
+      <h1>The Machine Quill</h1>
+      <p class="lede">
+        A small GPT — self-attention, transformer blocks, and all — trained on
+        Shakespeare and running entirely in this tab. No server, no API calls.
+        Give it a line and watch it continue in kind.
+      </p>
+    </header>
+
+    <div class="manuscript">
+      <div class="manuscript-inner">
+        <div class="prompt-row">
+          <input id="prompt" type="text" placeholder="ROMEO:" maxlength="200" />
+          <button id="generate">Write</button>
+        </div>
+        <div id="output"></div>
+      </div>
+      <div class="status">
+        <span id="status-left">loading model…</span>
+        <span id="status-right"></span>
+      </div>
+    </div>
+
+    <div class="marginalia" id="stats">
+      <div class="stat"><span class="n">—</span><span class="l">parameters</span></div>
+      <div class="stat"><span class="n">—</span><span class="l">layers</span></div>
+      <div class="stat"><span class="n">—</span><span class="l">attention heads</span></div>
+      <div class="stat"><span class="n">—</span><span class="l">context window</span></div>
+    </div>
+
+    <footer>
+      <p>
+        Every character you see is sampled one token at a time from a probability
+        distribution the model computes fresh at each step — the same mechanism
+        behind GPT-3 and ChatGPT, just at a scale small enough to run on the device
+        you're reading this on. The full training code and this JavaScript
+        inference engine are <a href="https://github.com/" target="_blank" rel="noopener">on GitHub</a>.
+      </p>
+    </footer>
+  </div>
+
+  <script src="model.js"></script>
+  <script>
+    const promptEl = document.getElementById('prompt');
+    const outputEl = document.getElementById('output');
+    const genBtn = document.getElementById('generate');
+    const statusLeft = document.getElementById('status-left');
+    const statusRight = document.getElementById('status-right');
+    const statsEl = document.getElementById('stats');
+
+    let generating = false;
+
+    function paramCount(meta) {
+      let total = 0;
+      for (const t of Object.values(meta.tensors)) total += t.length;
+      return total;
+    }
+
+    function fillStats(meta) {
+      const stats = [
+        [(paramCount(meta) / 1e6).toFixed(2) + 'M', 'parameters'],
+        [meta.n_layer, 'layers'],
+        [meta.n_head, 'attention heads'],
+        [meta.block_size, 'context window'],
+      ];
+      statsEl.innerHTML = stats.map(([n, l]) =>
+        `<div class="stat"><span class="n">${n}</span><span class="l">${l}</span></div>`
+      ).join('');
+    }
+
+    async function init() {
+      try {
+        const meta = await loadModel();
+        fillStats(meta);
+        statusLeft.textContent = 'model loaded — ready';
+        genBtn.disabled = false;
+      } catch (err) {
+        statusLeft.textContent = 'failed to load model — see console';
+        console.error(err);
+      }
+    }
+
+    async function runGenerate() {
+      if (generating) return;
+      const promptText = promptEl.value.trim() || 'ROMEO:';
+
+      // Filter to characters the model actually knows; skip silently on the rest.
+      let safePrompt = '';
+      for (const ch of promptText) {
+        if (META.stoi[ch] !== undefined) safePrompt += ch;
+      }
+      if (!safePrompt) safePrompt = Object.keys(META.stoi)[0];
+
+      generating = true;
+      genBtn.disabled = true;
+      statusLeft.textContent = 'writing…';
+      const t0 = performance.now();
+
+      outputEl.textContent = safePrompt;
+      const cursor = document.createElement('span');
+      cursor.className = 'cursor';
+      outputEl.appendChild(cursor);
+
+      await generate(safePrompt, 300, 0.8, (ch) => {
+        cursor.insertAdjacentText('beforebegin', ch);
+      });
+
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      statusRight.textContent = `${elapsed}s`;
+      statusLeft.textContent = 'model loaded — ready';
+      cursor.remove();
+      generating = false;
+      genBtn.disabled = false;
+    }
+
+    genBtn.disabled = true;
+    genBtn.addEventListener('click', runGenerate);
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runGenerate();
+    });
+
+    init();
+  </script>
+</body>
+</html>
